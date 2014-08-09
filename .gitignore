@@ -1,10 +1,22 @@
 *.class
 
+.metadata/
+RemoteSystemsTempFiles/
+.DS_Store/
+Servers/
+bin/
+upload_img/
+classes/
+data-origin-test-web/
+data-origin-util/
+backup/
+src/data-origin-generator/webapp/
+
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
 
 # Package Files #
-*.jar
+#*.jar
 *.war
 *.ear
 
