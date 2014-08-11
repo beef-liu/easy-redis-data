@@ -180,7 +180,6 @@ public class RedisDataUtilTest {
 		System.out.println("testPerformance1() time cost:" + (System.currentTimeMillis() - beginTime));
 	}
 	
-	@Test
 	public void testEncodeCompressRate() {
 		testEncodeRate(CompressAlgorithm.LZF);
 		testEncodeRate(CompressAlgorithm.GZIP);
@@ -193,6 +192,7 @@ public class RedisDataUtilTest {
 		testEncodeSpeed(CompressAlgorithm.GZIP, isTestJedisSet);
 	}
 
+	@Test
 	public void testEncodeCompressSpeed() {
 		boolean isTestJedisSet = false;
 		testEncodeSpeed(CompressAlgorithm.NotCompress, isTestJedisSet);
@@ -229,7 +229,7 @@ public class RedisDataUtilTest {
 			
 			long beginTime = System.currentTimeMillis();
 			byte[] bytes1 = null;
-			int loopCount = 10000;
+			int loopCount = 20000;
 			for(int i = 0; i < loopCount; i++) {
 				if(isTestJedisSet) {
 					String key = "testEncodeSpeed." + i;
