@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
+import java.util.BitSet;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -30,7 +31,7 @@ public class RedisDataUtilTest {
 	
 	public RedisDataUtilTest() {
 		String redisHost = "127.0.0.1";
-		int redisPort = 6381;
+		int redisPort = 6379;
 		int jedisPoolMaxActive = 2;
 		int jedisPoolMaxIdle = 1;
 		long jedisPoolMaxWait = 100;
@@ -184,20 +185,80 @@ public class RedisDataUtilTest {
 		testEncodeRate(CompressAlgorithm.LZF);
 		testEncodeRate(CompressAlgorithm.GZIP);
 	}
-
-	public void testEncodeCompressAndJedisSetSpeed() {
+	
+	@Test
+	public void testDetectCompress() {
+		try {
+			//String s = "abcdafafjdaljflajflajfja;lfjafjlajflajfafhafhkafhahfkahfkhafk2317832131hrkh41h87tysfda8yfashfh123h4h12h432h41487y9fhdifh";
+			String s = readFileContent(new File("test2.xml"), Charset.forName("utf-8"));
+			
+			String encodedS;
+			
+			RedisDataUtil.setCompressAlgorithm(CompressAlgorithm.LZF);
+			for(int i = 0; i < s.length(); i++) {
+				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), true), "utf-8");
+				//System.out.println("[" + i + "] expect LZF, detected:" + RedisDataUtil.detectValueCompressAlgorithm(encodedS));
+				if(RedisDataUtil.detectValueCompressAlgorithm(encodedS) != CompressAlgorithm.LZF) {
+					System.out.println("[" + i + "] expect LZF, but failed");
+				}
+			}
+			
+			RedisDataUtil.setCompressAlgorithm(CompressAlgorithm.GZIP);
+			for(int i = 0; i < s.length(); i++) {
+				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), true), "utf-8");
+				//System.out.println("[" + i + "] expect GZIP, detected:" + RedisDataUtil.detectValueCompressAlgorithm(encodedS));
+				if(RedisDataUtil.detectValueCompressAlgorithm(encodedS) != CompressAlgorithm.GZIP) {
+					System.out.println("[" + i + "] expect GZIP, but failed");
+				}
+			}
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void testDecodeBase64ByHand() {
+		String s = "AC0A";
+		
+		byte[] bytes = RedisDataUtil.decode3ByteBase64(
+				s.charAt(0), s.charAt(1), s.charAt(2), s.charAt(3));
+		
+		int n = (bytes[0] << 8) & 0xff00 | bytes[1];
+		
+		System.out.println("n:" + n);
+	}
+	
+	public void testEncode() {
 		boolean isTestJedisSet = true;
-		testEncodeSpeed(CompressAlgorithm.NotCompress, isTestJedisSet);
-		testEncodeSpeed(CompressAlgorithm.LZF, isTestJedisSet);
-		testEncodeSpeed(CompressAlgorithm.GZIP, isTestJedisSet);
+		int loopCount = 1;
+		String str = "a";
+		testEncodeSpeed(str, CompressAlgorithm.LZF, isTestJedisSet, loopCount);
+		testEncodeSpeed(str, CompressAlgorithm.GZIP, isTestJedisSet, loopCount);
+	}
+	
+	public void testEncodeCompressAndJedisSetSpeed() {
+		try {
+			boolean isTestJedisSet = true;
+			int loopCount = 2000;
+			String str = readFileContent(new File("test2.xml"), Charset.forName("utf-8"));
+			testEncodeSpeed(str, CompressAlgorithm.NotCompress, isTestJedisSet, loopCount);
+			testEncodeSpeed(str, CompressAlgorithm.LZF, isTestJedisSet, loopCount);
+			testEncodeSpeed(str, CompressAlgorithm.GZIP, isTestJedisSet, loopCount);
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
 	}
 
-	@Test
 	public void testEncodeCompressSpeed() {
-		boolean isTestJedisSet = false;
-		testEncodeSpeed(CompressAlgorithm.NotCompress, isTestJedisSet);
-		testEncodeSpeed(CompressAlgorithm.LZF, isTestJedisSet);
-		testEncodeSpeed(CompressAlgorithm.GZIP, isTestJedisSet);
+		try {
+			boolean isTestJedisSet = false;
+			int loopCount = 2000;
+			String str = readFileContent(new File("test2.xml"), Charset.forName("utf-8"));
+			testEncodeSpeed(str, CompressAlgorithm.NotCompress, isTestJedisSet, loopCount);
+			testEncodeSpeed(str, CompressAlgorithm.LZF, isTestJedisSet, loopCount);
+			testEncodeSpeed(str, CompressAlgorithm.GZIP, isTestJedisSet, loopCount);
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 	protected void testEncodeRate(CompressAlgorithm algorithm) {
@@ -220,19 +281,24 @@ public class RedisDataUtilTest {
 		}
 	}
 
-	protected void testEncodeSpeed(CompressAlgorithm algorithm, boolean isTestJedisSet) {
+	protected void testEncodeSpeed(String str, CompressAlgorithm algorithm, boolean isTestJedisSet, int loopCount) {
 		//String str = "Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试Test测试";
 		try {
 			RedisDataUtil.setCompressAlgorithm(algorithm);
 
-			String str = readFileContent(new File("test2.xml"), Charset.forName("utf-8"));
 			
 			long beginTime = System.currentTimeMillis();
 			byte[] bytes1 = null;
-			int loopCount = 20000;
+			//int loopCount = 20000;
+			String algo = "nocomp";
+			if(algorithm == CompressAlgorithm.LZF) {
+				algo = "lzf";
+			} else if(algorithm == CompressAlgorithm.GZIP) {
+				algo = "gzip";
+			}
 			for(int i = 0; i < loopCount; i++) {
 				if(isTestJedisSet) {
-					String key = "testEncodeSpeed." + i;
+					String key = "testEncodeSpeed." + algo + "." + i;
 					Jedis jedis = null;
 					try {
 						jedis = _jedisPool.getResource();

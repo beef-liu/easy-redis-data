@@ -45,6 +45,108 @@ public class RedisDataUtil {
 		_compressAlgorithm = algorithm;
 	}
 	
+	public static CompressAlgorithm detectValueCompressAlgorithm(String value) {
+		//check wether length is compatible with base64
+		int len = value.length();
+		
+		if(len < 8) {
+			return CompressAlgorithm.NotCompress;
+		}
+		
+		int countExcludeReturnLine = 0;
+		for(int i = 0; i < value.length(); i++) {
+			if(value.charAt(i) != '\r' && value.charAt(i) != '\n') {
+				countExcludeReturnLine++;
+			}
+		}
+		if((countExcludeReturnLine % 4) != 0) {
+			return CompressAlgorithm.NotCompress;
+		}
+		
+		if(value.startsWith("WlY")) {
+			//check signature of lzf
+			if(value.charAt(3) == 'A' || value.charAt(3) == 'B') {
+				//check chunk len
+				byte[] lenBytes = decode3ByteBase64(value.charAt(4), value.charAt(5), value.charAt(6), value.charAt(7));
+				int chunkLen = ((byte)lenBytes[0] << 8) & 0xff00 | (lenBytes[1] & 0xff);
+				
+				int padLen = 0;
+				if(value.charAt(value.length() - 1) == '=') {
+					padLen ++;
+				}
+				if(value.charAt(value.length() - 2) == '=') {
+					padLen ++;
+				}
+				
+				int lenOfOriginLen = (value.charAt(3) == 'B' ? 2 : 0);
+				
+				int calcuChunkLen = ((countExcludeReturnLine - 8) / 4) * 3 + 1 - padLen - lenOfOriginLen;
+				if(calcuChunkLen == chunkLen) {
+					return CompressAlgorithm.LZF;
+				}
+			}
+		} else if (value.length() >= 16) {
+			//check signature of gzip
+			byte[] bytes = decode3ByteBase64(
+					value.charAt(0), value.charAt(1), value.charAt(2), value.charAt(3));
+			if(bytes[0] == (byte) 0x1f && bytes[1] == (byte) 0x8b && bytes[2] == (byte) 0x08) {
+				if(value.charAt(5) == 'A' && value.charAt(6) == 'A' && value.charAt(7) == 'A' 
+						&& value.charAt(8) == 'A' && value.charAt(9) == 'A' ) {
+					return CompressAlgorithm.GZIP;
+				}
+			}
+		}
+		
+		
+		return CompressAlgorithm.NotCompress;
+	}
+	
+	public static byte[] decode3ByteBase64(char base64chr0, char base64chr1, char base64chr2, char base64chr3) {
+		byte[] bytes = new byte[3];
+		byte v;
+		
+		//char 0
+		v = decodeBase64Char(base64chr0);
+		bytes[0] = (byte) ((v << 2) & 0xfc);
+		
+		//char 1
+		v = decodeBase64Char(base64chr1);
+		bytes[0] |= (byte) ((v >> 4) & 0x03);
+		bytes[1] = (byte) ((v << 4) & 0xf0);
+		
+		//char 2
+		v = decodeBase64Char(base64chr2);
+		bytes[1] |= (byte) ((v >> 2) & 0x0f);
+		bytes[2] = (byte) ((v << 6) & 0xc0);
+		
+		//char 3
+		v = decodeBase64Char(base64chr3);
+		bytes[2] |= v;
+		
+		return bytes;
+	}
+	
+	private static byte decodeBase64Char(char base64chr) {
+		if (base64chr == '+') {
+			return 62;
+		} else if (base64chr == '/') {
+			return 63;
+		} else if (base64chr == '=') {
+			return 0;
+		}
+		
+		byte c = (byte) base64chr;
+		if(c >= 0x30 && c <= 0x39) {
+			return (byte) (c + 4);
+		} else if (c >= 0x41 && c <= 0x5A) {
+			return (byte) (c - 0x41);
+		} else if (c >= 0x61 && c <= 0x7A) {
+			return (byte) (c - 71);
+		} else {
+			return 0;
+		}
+	}
+	
 	public static void setCharset(Charset charset) {
 		_charset = charset;
 	}
