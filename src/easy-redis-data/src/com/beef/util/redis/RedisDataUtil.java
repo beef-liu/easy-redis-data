@@ -32,17 +32,18 @@ public class RedisDataUtil {
 	//default utf-8
 	protected static Charset _charset = Charset.forName("utf-8");
 
-	protected static CompressAlgorithm _compressAlgorithm = CompressAlgorithm.LZF;
-	protected static ICompressor _compressor = new LZFCompressor();
+	protected static CompressAlgorithm _defaultCompressAlgorithm = CompressAlgorithm.LZF;
+	protected static ICompressor _compressorOfLZF = new LZFCompressor();
+	protected static ICompressor _compressorOfGZIP = new GZipCompressor();
 	
 	public static void setCompressAlgorithm(CompressAlgorithm algorithm) {
 		if(algorithm == CompressAlgorithm.LZF) {
-			_compressor = new LZFCompressor();
+			_compressorOfLZF = new LZFCompressor();
 		} else if (algorithm == CompressAlgorithm.GZIP) {
-			_compressor = new GZipCompressor();
+			_compressorOfGZIP = new GZipCompressor();
 		}
 		
-		_compressAlgorithm = algorithm;
+		_defaultCompressAlgorithm = algorithm;
 	}
 	
 	public static CompressAlgorithm detectValueCompressAlgorithm(String value) {
@@ -464,9 +465,20 @@ public class RedisDataUtil {
 	}
 	
 	public static byte[] encodeStringBytes(byte[] stringBytes, boolean isUseCompress) throws IOException, CompressException {
-		if(isUseCompress && _compressAlgorithm != CompressAlgorithm.NotCompress) {
+		return encodeStringBytes(stringBytes, isUseCompress?_defaultCompressAlgorithm : CompressAlgorithm.NotCompress);
+	}
+	
+	public static byte[] encodeStringBytes(byte[] stringBytes, CompressAlgorithm compressAlgorithm) throws IOException, CompressException {
+		if(compressAlgorithm != CompressAlgorithm.NotCompress) {
+			ICompressor compressor;
+			if(compressAlgorithm == CompressAlgorithm.LZF) {
+				compressor = _compressorOfLZF;
+			} else {
+				compressor = _compressorOfGZIP;
+			}
+			
 			//compress
-			byte[] bytesCompressed = _compressor.compress(stringBytes);
+			byte[] bytesCompressed = compressor.compress(stringBytes);
 			
 			//encode to base64
 			ByteArrayOutputStream bytesEncoded = new ByteArrayOutputStream();
@@ -480,14 +492,25 @@ public class RedisDataUtil {
 	}
 
 	public static byte[] decodeStringBytes(byte[] stringBytes, boolean isUseCompress) throws IOException, Base64FormatException, CompressException {
-		if(isUseCompress && _compressAlgorithm != CompressAlgorithm.NotCompress) {
+		return decodeStringBytes(stringBytes, isUseCompress?_defaultCompressAlgorithm : CompressAlgorithm.NotCompress);
+	}
+	
+	public static byte[] decodeStringBytes(byte[] stringBytes, CompressAlgorithm compressAlgorithm) throws IOException, Base64FormatException, CompressException {
+		if(compressAlgorithm != CompressAlgorithm.NotCompress) {
+			ICompressor compressor;
+			if(compressAlgorithm == CompressAlgorithm.LZF) {
+				compressor = _compressorOfLZF;
+			} else {
+				compressor = _compressorOfGZIP;
+			}
+			
 			//decode from base64
 			ByteArrayOutputStream bytesDecoded = new ByteArrayOutputStream();
 			Base64Decoder base64 = new Base64Decoder(new ByteArrayInputStream(stringBytes), bytesDecoded);
 			base64.process();
 			
 			//decompress
-			return _compressor.decompress(bytesDecoded.toByteArray());
+			return compressor.decompress(bytesDecoded.toByteArray());
 		} else {
 			return stringBytes;
 		}

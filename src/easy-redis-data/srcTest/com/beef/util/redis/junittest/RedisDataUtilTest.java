@@ -82,6 +82,7 @@ public class RedisDataUtilTest {
 		}
 	}
 
+	@Test
 	public void testRedisRead() {
 		Jedis jedis = null;
 
@@ -91,7 +92,7 @@ public class RedisDataUtilTest {
 		try {
 			jedis = _jedisPool.getResource();
 			
-			val = RedisDataUtil.get(jedis, "test.int.1", true);
+			val = RedisDataUtil.get(jedis, "test.int.1", false);
 			
 			val = RedisDataUtil.get(jedis, "test.val.1", true);
 			
@@ -186,7 +187,6 @@ public class RedisDataUtilTest {
 		testEncodeRate(CompressAlgorithm.GZIP);
 	}
 	
-	@Test
 	public void testDetectCompress() {
 		try {
 			//String s = "abcdafafjdaljflajflajfja;lfjafjlajflajfafhafhkafhahfkahfkhafk2317832131hrkh41h87tysfda8yfashfh123h4h12h432h41487y9fhdifh";
@@ -194,18 +194,16 @@ public class RedisDataUtilTest {
 			
 			String encodedS;
 			
-			RedisDataUtil.setCompressAlgorithm(CompressAlgorithm.LZF);
 			for(int i = 0; i < s.length(); i++) {
-				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), true), "utf-8");
+				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), CompressAlgorithm.LZF), "utf-8");
 				//System.out.println("[" + i + "] expect LZF, detected:" + RedisDataUtil.detectValueCompressAlgorithm(encodedS));
 				if(RedisDataUtil.detectValueCompressAlgorithm(encodedS) != CompressAlgorithm.LZF) {
 					System.out.println("[" + i + "] expect LZF, but failed");
 				}
 			}
 			
-			RedisDataUtil.setCompressAlgorithm(CompressAlgorithm.GZIP);
 			for(int i = 0; i < s.length(); i++) {
-				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), true), "utf-8");
+				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), CompressAlgorithm.GZIP), "utf-8");
 				//System.out.println("[" + i + "] expect GZIP, detected:" + RedisDataUtil.detectValueCompressAlgorithm(encodedS));
 				if(RedisDataUtil.detectValueCompressAlgorithm(encodedS) != CompressAlgorithm.GZIP) {
 					System.out.println("[" + i + "] expect GZIP, but failed");
