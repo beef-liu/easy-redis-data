@@ -54,19 +54,24 @@ public class RedisDataUtil {
 			return CompressAlgorithm.NotCompress;
 		}
 		
-		int countExcludeReturnLine = 0;
-		for(int i = 0; i < value.length(); i++) {
-			if(value.charAt(i) != '\r' && value.charAt(i) != '\n') {
-				countExcludeReturnLine++;
-			}
-		}
-		if((countExcludeReturnLine % 4) != 0) {
-			return CompressAlgorithm.NotCompress;
-		}
-		
 		if(value.startsWith("WlY")) {
 			//check signature of lzf
 			if(value.charAt(3) == 'A' || value.charAt(3) == 'B') {
+				//find out if multi chunk
+				int nextChunkIndex = value.indexOf("WlY", 4);
+				if(nextChunkIndex < 0) {
+					nextChunkIndex = value.length();
+				}
+				int countExcludeReturnLine = 0;
+				for(int i = 0; i < nextChunkIndex; i++) {
+					if(value.charAt(i) != '\r' && value.charAt(i) != '\n') {
+						countExcludeReturnLine++;
+					}
+				}
+				if((countExcludeReturnLine % 4) != 0) {
+					return CompressAlgorithm.NotCompress;
+				}
+				
 				//check chunk len
 				byte[] lenBytes = decode3ByteBase64(value.charAt(4), value.charAt(5), value.charAt(6), value.charAt(7));
 				int chunkLen = ((byte)lenBytes[0] << 8) & 0xff00 | (lenBytes[1] & 0xff);
@@ -87,6 +92,16 @@ public class RedisDataUtil {
 				}
 			}
 		} else if (value.length() >= 16) {
+			int countExcludeReturnLine = 0;
+			for(int i = 0; i < value.length(); i++) {
+				if(value.charAt(i) != '\r' && value.charAt(i) != '\n') {
+					countExcludeReturnLine++;
+				}
+			}
+			if((countExcludeReturnLine % 4) != 0) {
+				return CompressAlgorithm.NotCompress;
+			}
+
 			//check signature of gzip
 			byte[] bytes = decode3ByteBase64(
 					value.charAt(0), value.charAt(1), value.charAt(2), value.charAt(3));
