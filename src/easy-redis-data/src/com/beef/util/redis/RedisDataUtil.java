@@ -8,29 +8,31 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 import org.w3c.tools.codec.Base64Decoder;
 import org.w3c.tools.codec.Base64Encoder;
 import org.w3c.tools.codec.Base64FormatException;
+
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisCommands;
+import redis.clients.jedis.Protocol;
+import MetoXML.XmlDeserializer;
+import MetoXML.XmlSerializer;
+import MetoXML.Base.XmlParseException;
+import MetoXML.Cast.BaseTypesMapping;
+import MetoXML.Util.ClassFinder;
 
 import com.beef.util.redis.compress.CompressException;
 import com.beef.util.redis.compress.GZipCompressor;
 import com.beef.util.redis.compress.ICompressor;
 import com.beef.util.redis.compress.LZFCompressor;
 
-import redis.clients.jedis.Jedis;
-import MetoXML.XmlDeserializer;
-import MetoXML.XmlSerializer;
-import MetoXML.Base.XmlParseException;
-import MetoXML.Util.ClassFinder;
-
 public class RedisDataUtil {
 	public static enum CompressAlgorithm {NotCompress, GZIP, LZF};
 	
 	//default utf-8
-	protected static Charset _charset = Charset.forName("utf-8");
+	//protected static Charset _charset = Charset.forName("utf-8");
+	protected static Charset _charset = Charset.forName(Protocol.CHARSET);
 
 	protected static CompressAlgorithm _defaultCompressAlgorithm = CompressAlgorithm.LZF;
 	protected static ICompressor _compressorOfLZF = new LZFCompressor();
@@ -163,61 +165,105 @@ public class RedisDataUtil {
 		}
 	}
 	
+	/*
 	public static void setCharset(Charset charset) {
 		_charset = charset;
 	}
+	*/
 	
+	/**
+	 * for compatible with older version (Jedis other than JedisCommands)
+	 * @param jedis
+	 * @param key
+	 * @return
+	 */
 	public static long del(
 			Jedis jedis,
 			String key 
 			) {
-		return jedis.del(key.getBytes(_charset));
+		return del((JedisCommands)jedis, key);
+	}
+	public static long del(
+			JedisCommands jedis,
+			String key 
+			) {
+		return jedis.del(key);
 	}
 
 	public static long incr(
 			Jedis jedis,
 			String key 
 			) {
-		return jedis.incr(key.getBytes(_charset));
+		return incr((JedisCommands)jedis, key);
+	}
+	public static long incr(
+			JedisCommands jedis,
+			String key 
+			) {
+		return jedis.incr(key);
 	}
 	
 	public static long incrBy(
 			Jedis jedis,
 			String key, long integer
 			) {
-		return jedis.incrBy(key.getBytes(_charset), integer);
+		return incrBy((JedisCommands)jedis, key, integer);
+	}
+	public static long incrBy(
+			JedisCommands jedis,
+			String key, long integer
+			) {
+		return jedis.incrBy(key, integer);
 	}
 
 	public static String set(
 			Jedis jedis,
 			String key, String val, boolean isUseCompress
 			) throws IOException, CompressException {
-		return jedis.set(key.getBytes(_charset), encodeStringBytes(val.getBytes(_charset), isUseCompress));
+		return set((JedisCommands)jedis, key, val, isUseCompress);
+	}
+	public static String set(
+			JedisCommands jedis,
+			String key, String val, boolean isUseCompress
+			) throws IOException, CompressException {
+		return jedis.set(key, encodeString(val, isUseCompress));
 	}
 	
 	public static String get(
 			Jedis jedis,
 			String key, boolean isUseCompress 
 			) throws IOException, Base64FormatException, CompressException {
-		byte[] val = jedis.get(key.getBytes(_charset));
-		if(val == null) {
-			return null;
-		} else {
-			return new String(decodeStringBytes(val, isUseCompress), _charset);
-		}
+		return get((JedisCommands)jedis, key, isUseCompress);
+	}
+	public static String get(
+			JedisCommands jedis,
+			String key, boolean isUseCompress 
+			) throws IOException, Base64FormatException, CompressException {
+		return decodeString(jedis.get(key), isUseCompress);
 	}
 	
 	public static String set(
 			Jedis jedis,
 			String key, Object data, Class<?> dataClass, boolean isUseCompress 
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = serializeData(data, dataClass, isUseCompress);
-		
-		return jedis.set(key.getBytes(_charset), dataBytes);
+		return set((JedisCommands)jedis, key, data, dataClass, isUseCompress);
+	}
+	public static String set(
+			JedisCommands jedis,
+			String key, Object data, Class<?> dataClass, boolean isUseCompress 
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.set(key, 
+				serializeDataToString(data, dataClass, isUseCompress));
 	}
 	
 	public static Object get(
 			Jedis jedis,
+			String key, Class<?> dataClass, boolean isUseCompress
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return get((JedisCommands)jedis, key, dataClass, isUseCompress);
+	}
+	public static Object get(
+			JedisCommands jedis,
 			String key, Class<?> dataClass, boolean isUseCompress
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
 		return get(jedis, key, dataClass, isUseCompress, null);
@@ -228,19 +274,28 @@ public class RedisDataUtil {
 			String key, Class<?> dataClass, boolean isUseCompress, 
 			ClassFinder classFinder
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
-		byte[] dataBytes = jedis.get(key.getBytes(_charset));
-		if(dataBytes == null) {
-			return null;
-		} else {
-			return deserializeData(dataBytes, dataClass, isUseCompress, classFinder);
-		}
+		return get((JedisCommands)jedis, key, dataClass, isUseCompress, classFinder);
+	}
+	public static Object get(
+			JedisCommands jedis,
+			String key, Class<?> dataClass, boolean isUseCompress, 
+			ClassFinder classFinder
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return deserializeData(jedis.get(key), 
+				dataClass, isUseCompress, classFinder);
 	}
 	
 	public static long llen(
 			Jedis jedis,
 			String key
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException {
-		return jedis.llen(key.getBytes(_charset));
+		return llen((JedisCommands)jedis, key);
+	}
+	public static long llen(
+			JedisCommands jedis,
+			String key
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException {
+		return jedis.llen(key);
 	}
 	
 	public static String lindex(
@@ -248,12 +303,14 @@ public class RedisDataUtil {
 			String key, long index, 
 			boolean isUseCompress
 			) throws IOException, Base64FormatException, CompressException {
-		byte[] bytes = jedis.lindex(key.getBytes(_charset), index);
-		if(bytes == null) {
-			return null;
-		} else {
-			return new String(decodeStringBytes(bytes, isUseCompress), _charset);
-		}
+		return lindex((JedisCommands)jedis, key, index, isUseCompress);
+	}
+	public static String lindex(
+			JedisCommands jedis,
+			String key, long index, 
+			boolean isUseCompress
+			) throws IOException, Base64FormatException, CompressException {
+		return decodeString(jedis.lindex(key, index), isUseCompress);
 	}
 
 	public static List<String> lrange(
@@ -261,16 +318,25 @@ public class RedisDataUtil {
 			String key, long start, long end, 
 			boolean isUseCompress
 			) throws IOException, Base64FormatException, CompressException {
-		if(!isUseCompress && _charset.name().equalsIgnoreCase("utf-8")) {
+		return lrange((JedisCommands)jedis, key, start, end, isUseCompress);
+	}
+	public static List<String> lrange(
+			JedisCommands jedis,
+			String key, long start, long end, 
+			boolean isUseCompress
+			) throws IOException, Base64FormatException, CompressException {
+		if(!isUseCompress 
+				//&& _charset.name().equalsIgnoreCase("utf-8")
+				) {
 			return jedis.lrange(key, start, end);
 		} else {
-			List<byte[]> bytesList = jedis.lrange(key.getBytes(_charset), start, end);
-			if(bytesList == null) {
+			List<String> strList = jedis.lrange(key, start, end);
+			if(strList == null) {
 				return null;
 			} else {
 				List<String> valueList = new ArrayList<String>();
-				for(int i = 0; i < bytesList.size(); i++) {
-					valueList.add(new String(decodeStringBytes(bytesList.get(i), isUseCompress), _charset));
+				for(int i = 0; i < strList.size(); i++) {
+					valueList.add(decodeString(strList.get(i), isUseCompress));
 				}
 				
 				return valueList;
@@ -282,38 +348,61 @@ public class RedisDataUtil {
 			Jedis jedis,
 			String key, boolean isUseCompress
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
-		byte[] bytes = jedis.lpop(key.getBytes(_charset));
-		if(bytes == null) {
-			return null;
-		} else {
-			return new String(decodeStringBytes(bytes, isUseCompress), _charset);
-		}
+		return lpop((JedisCommands)jedis, key, isUseCompress);
+	}
+	public static String lpop(
+			JedisCommands jedis,
+			String key, boolean isUseCompress
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return decodeString(jedis.lpop(key), isUseCompress);
 	}
 
-	public static String lset(Jedis jedis,
+	public static String lset(
+			Jedis jedis,
 			String key, long index, 
 			String value, boolean isUseCompress
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = encodeStringBytes(value.getBytes(_charset), isUseCompress);
-		return jedis.lset(key.getBytes(_charset), index, dataBytes);
+		return lset((JedisCommands)jedis, key, index, value, isUseCompress);
+	}
+	public static String lset(JedisCommands jedis,
+			String key, long index, 
+			String value, boolean isUseCompress
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.lset(key, index, encodeString(value, isUseCompress));
 	}
 	
 	public static long rpush(Jedis jedis,
 			String key, String value, boolean isUseCompress
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = encodeStringBytes(value.getBytes(_charset), isUseCompress);
-		return jedis.rpush(key.getBytes(_charset), dataBytes);
+		return rpush((JedisCommands)jedis, key, value, isUseCompress);
+	}
+	public static long rpush(JedisCommands jedis,
+			String key, String value, boolean isUseCompress
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.rpush(key, encodeString(value, isUseCompress));
 	}
 	
 	public static long lpush(Jedis jedis,
 			String key, String value, boolean isUseCompress
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = encodeStringBytes(value.getBytes(_charset), isUseCompress);
-		return jedis.lpush(key.getBytes(_charset), dataBytes);
+		return lpush((JedisCommands)jedis, key, value, isUseCompress);
+	}
+	public static long lpush(JedisCommands jedis,
+			String key, String value, boolean isUseCompress
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.lpush(key, encodeString(value, isUseCompress));
 	}
 
 	public static Object lindex(
 			Jedis jedis,
+			String key, long index, 
+			Class<?> dataClass, 
+			boolean isUseCompress
+			) throws IOException, Base64FormatException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, CompressException {
+		return lindex((JedisCommands)jedis, key, index, dataClass, isUseCompress);
+	}
+	public static Object lindex(
+			JedisCommands jedis,
 			String key, long index, 
 			Class<?> dataClass, 
 			boolean isUseCompress
@@ -328,12 +417,17 @@ public class RedisDataUtil {
 			boolean isUseCompress,
 			ClassFinder classFinder
 			) throws IOException, Base64FormatException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, CompressException {
-		byte[] dataBytes = jedis.lindex(key.getBytes(_charset), index);
-		if(dataBytes == null) {
-			return null;
-		} else {
-			return deserializeData(dataBytes, dataClass, isUseCompress, classFinder);
-		}
+		return lindex((JedisCommands)jedis, key, index, dataClass, isUseCompress, classFinder);
+	}
+	public static Object lindex(
+			JedisCommands jedis,
+			String key, long index, 
+			Class<?> dataClass, 
+			boolean isUseCompress,
+			ClassFinder classFinder
+			) throws IOException, Base64FormatException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, CompressException {
+		return deserializeData(jedis.lindex(key, index), 
+				dataClass, isUseCompress, classFinder);
 	}
 
 	public static List<Object> lrange(
@@ -342,14 +436,22 @@ public class RedisDataUtil {
 			Class<?> dataClass, boolean isUseCompress, 
 			ClassFinder classFinder
 			) throws IOException, Base64FormatException, CompressException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException {
-		List<byte[]> bytesList = jedis.lrange(key.getBytes(_charset), start, end);
-		if(bytesList == null) {
+		return lrange((JedisCommands)jedis, key, start, end, dataClass, isUseCompress, classFinder);
+	}
+	public static List<Object> lrange(
+			JedisCommands jedis,
+			String key, long start, long end, 
+			Class<?> dataClass, boolean isUseCompress, 
+			ClassFinder classFinder
+			) throws IOException, Base64FormatException, CompressException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException {
+		List<String> strList = jedis.lrange(key, start, end);
+		if(strList == null) {
 			return null;
 		} else {
 			List<Object> valueList = new ArrayList<Object>();
-			for(int i = 0; i < bytesList.size(); i++) {
+			for(int i = 0; i < strList.size(); i++) {
 				valueList.add(
-						deserializeData(bytesList.get(i), dataClass, isUseCompress, classFinder)
+						deserializeData(strList.get(i), dataClass, isUseCompress, classFinder)
 						);
 			}
 			
@@ -361,6 +463,12 @@ public class RedisDataUtil {
 			Jedis jedis,
 			String key, Class<?> dataClass, boolean isUseCompress
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return lpop((JedisCommands)jedis, key, dataClass, isUseCompress);
+	}
+	public static Object lpop(
+			JedisCommands jedis,
+			String key, Class<?> dataClass, boolean isUseCompress
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
 		return lpop(jedis, key, dataClass, isUseCompress, null);
 	}
 
@@ -370,12 +478,15 @@ public class RedisDataUtil {
 			Class<?> dataClass, boolean isUseCompress, 
 			ClassFinder classFinder
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
-		byte[] dataBytes = jedis.lpop(key.getBytes(_charset));
-		if(dataBytes == null) {
-			return null;
-		} else {
-			return deserializeData(dataBytes, dataClass, isUseCompress, classFinder);
-		}
+		return lpop((JedisCommands)jedis, key, dataClass, isUseCompress, classFinder);
+	}
+	public static Object lpop(
+			JedisCommands jedis,
+			String key, 
+			Class<?> dataClass, boolean isUseCompress, 
+			ClassFinder classFinder
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return deserializeData(jedis.lpop(key), dataClass, isUseCompress, classFinder);
 	}
 	
 	public static String lset(
@@ -383,55 +494,89 @@ public class RedisDataUtil {
 			String key, long index, 
 			Object data, Class<?> dataClass, boolean isUseCompress
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = serializeData(data, dataClass, isUseCompress);
-		return jedis.lset(key.getBytes(_charset), index, dataBytes);
+		return lset((JedisCommands)jedis, key, index, data, dataClass, isUseCompress);
+	}
+	public static String lset(
+			JedisCommands jedis,
+			String key, long index, 
+			Object data, Class<?> dataClass, boolean isUseCompress
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.lset(key, index, serializeDataToString(data, dataClass, isUseCompress));
 	}
 	
 	public static long rpush(
 			Jedis jedis,
 			String key, Object data, Class<?> dataClass, boolean isUseCompress
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = serializeData(data, dataClass, isUseCompress);
-		return jedis.rpush(key.getBytes(_charset), dataBytes);
+		return rpush((JedisCommands)jedis, key, data, dataClass, isUseCompress);
+	}
+	public static long rpush(
+			JedisCommands jedis,
+			String key, Object data, Class<?> dataClass, boolean isUseCompress
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.rpush(key, serializeDataToString(data, dataClass, isUseCompress));
 	}
 
 	public static long lpush(
 			Jedis jedis,
 			String key, Object data, Class<?> dataClass, boolean isUseCompress
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = serializeData(data, dataClass, isUseCompress);
-		return jedis.lpush(key.getBytes(_charset), dataBytes);
+		return lpush((JedisCommands)jedis, key, data, dataClass, isUseCompress);
+	}
+	public static long lpush(
+			JedisCommands jedis,
+			String key, Object data, Class<?> dataClass, boolean isUseCompress
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.lpush(key, serializeDataToString(data, dataClass, isUseCompress));
 	}
 	
 	public static Object hdel(
 			Jedis jedis,
 			String key, String field
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException {
-		return jedis.hdel(key.getBytes(_charset), field.getBytes(_charset));
+		return hdel((JedisCommands)jedis, key, field);
+	}
+	public static Object hdel(
+			JedisCommands jedis,
+			String key, String field
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException {
+		return jedis.hdel(key, field);
 	}
 
 	public static String hget(
 			Jedis jedis,
 			String key, String field, boolean isUseCompress
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
-		byte[] dataBytes = jedis.hget(key.getBytes(_charset), field.getBytes(_charset));
-		if(dataBytes == null) {
-			return null;
-		} else {
-			return new String(decodeStringBytes(dataBytes, isUseCompress), _charset);
-		}
+		return hget((JedisCommands)jedis, key, field, isUseCompress);
+	}
+	public static String hget(
+			JedisCommands jedis,
+			String key, String field, boolean isUseCompress
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return decodeString(jedis.hget(key, field), isUseCompress);
 	}
 
 	public static long hset(
 			Jedis jedis,
 			String key, String field, String value, boolean isUseCompress 
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = encodeStringBytes(value.getBytes(_charset), isUseCompress);
-		return jedis.hset(key.getBytes(_charset), field.getBytes(_charset), dataBytes);
+		return hset((JedisCommands)jedis, key, field, value, isUseCompress);
+	}
+	public static long hset(
+			JedisCommands jedis,
+			String key, String field, String value, boolean isUseCompress 
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.hset(key, field, encodeString(value, isUseCompress));
 	}
 	
 	public static Object hget(
 			Jedis jedis,
+			String key, String field, Class<?> dataClass, boolean isUseCompress
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return hget((JedisCommands)jedis, key, field, dataClass, isUseCompress);
+	}
+	public static Object hget(
+			JedisCommands jedis,
 			String key, String field, Class<?> dataClass, boolean isUseCompress
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
 		return hget(jedis, key, field, dataClass, isUseCompress, null);
@@ -442,20 +587,33 @@ public class RedisDataUtil {
 			String key, String field, Class<?> dataClass, boolean isUseCompress, 
 			ClassFinder classFinder
 			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
-		byte[] dataBytes = jedis.hget(key.getBytes(_charset), field.getBytes(_charset));
-		if(dataBytes == null) {
-			return null;
-		} else {
-			return deserializeData(dataBytes, dataClass, isUseCompress, classFinder);
-		}
+		return hget((JedisCommands)jedis, key, field, dataClass, isUseCompress, classFinder);
+	}
+	public static Object hget(
+			JedisCommands jedis,
+			String key, String field, Class<?> dataClass, boolean isUseCompress, 
+			ClassFinder classFinder
+			) throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		return deserializeData(jedis.hget(key, field), dataClass, isUseCompress, classFinder);
 	}
 
 	public static long hset(
 			Jedis jedis,
 			String key, String field, Object data, Class<?> dataClass, boolean isUseCompress 
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
-		byte[] dataBytes = serializeData(data, dataClass, isUseCompress);
-		return jedis.hset(key.getBytes(_charset), field.getBytes(_charset), dataBytes);
+		return hset((JedisCommands)jedis, key, field, data, dataClass, isUseCompress);
+	}
+	public static long hset(
+			JedisCommands jedis,
+			String key, String field, Object data, Class<?> dataClass, boolean isUseCompress 
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.hset(key, field, serializeDataToString(data, dataClass, isUseCompress));
+	}
+	
+	public static String serializeDataToString(Object data, Class<?> dataClass, boolean isUseCompress) 
+			throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		String dataXml = XmlSerializer.objectToString(data, dataClass);
+		return encodeString(dataXml, isUseCompress);
 	}
 	
 	public static byte[] serializeData(Object data, Class<?> dataClass, boolean isUseCompress) 
@@ -464,19 +622,57 @@ public class RedisDataUtil {
 		
 		return encodeStringBytes(dataXml.getBytes(_charset), isUseCompress);
 	}
+
+	public static Object deserializeData(String str, Class<?> dataClass, boolean isUseCompress) 
+			throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
+		if(str == null) {
+			return null;
+		}
+		
+		return deserializeData(str, dataClass, isUseCompress, null);
+	}
 	
 	public static Object deserializeData(byte[] dataBytes, Class<?> dataClass, boolean isUseCompress) 
 			throws XmlParseException, IOException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, Base64FormatException, CompressException {
 		return deserializeData(dataBytes, dataClass, isUseCompress, null);
 	}
+
+	public static Object deserializeData(String str, Class<?> dataClass, boolean isUseCompress, ClassFinder classFinder) 
+			throws IOException, Base64FormatException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, CompressException {
+		if(str == null) {
+			return null;
+		}
+		
+		String dataXml = decodeString(str, isUseCompress);
+		return deserializeDataXml(dataXml, dataClass, classFinder);
+	}
 	
 	public static Object deserializeData(byte[] dataBytes, Class<?> dataClass, boolean isUseCompress, ClassFinder classFinder) 
 			throws IOException, Base64FormatException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException, CompressException {
 		byte[] bytes = decodeStringBytes(dataBytes, isUseCompress);
+		String dataXml = new String(bytes, _charset);
+	
+		return deserializeDataXml(dataXml, dataClass, classFinder);
+	}
+	
+	private final static Object deserializeDataXml(String dataXml, Class<?> dataClass, ClassFinder classFinder) throws IOException, XmlParseException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException {
+		Object data = XmlDeserializer.stringToObject(dataXml, dataClass, classFinder);
+		checkClassFinder(data, classFinder);
 		
-		String xmlStr = new String(bytes, _charset);
+		return data;
+	}
+	
+	public static String encodeString(String string, boolean isUseCompress) throws IOException, CompressException {
+		if(string == null || string.length() == 0) {
+			return string;
+		}
 		
-		return XmlDeserializer.stringToObject(xmlStr, dataClass, classFinder);
+		CompressAlgorithm compressAlgorithm = (isUseCompress?_defaultCompressAlgorithm : CompressAlgorithm.NotCompress);
+		if(compressAlgorithm == CompressAlgorithm.NotCompress) {
+			return string;
+		} else {
+			return new String(encodeStringBytes(string.getBytes(_charset), compressAlgorithm), _charset);
+		}
 	}
 	
 	public static byte[] encodeStringBytes(byte[] stringBytes, boolean isUseCompress) throws IOException, CompressException {
@@ -506,6 +702,19 @@ public class RedisDataUtil {
 		}
 	}
 
+	public static String decodeString(String string, boolean isUseCompress) throws IOException, Base64FormatException, CompressException {
+		if(string == null || string.length() == 0) {
+			return string;
+		}
+		
+		CompressAlgorithm compressAlgorithm = (isUseCompress?_defaultCompressAlgorithm : CompressAlgorithm.NotCompress);
+		if(compressAlgorithm == CompressAlgorithm.NotCompress) {
+			return string;
+		} else {
+			return new String(decodeStringBytes(string.getBytes(_charset), compressAlgorithm), _charset);
+		}
+	}
+	
 	public static byte[] decodeStringBytes(byte[] stringBytes, boolean isUseCompress) throws IOException, Base64FormatException, CompressException {
 		return decodeStringBytes(stringBytes, isUseCompress?_defaultCompressAlgorithm : CompressAlgorithm.NotCompress);
 	}
@@ -531,4 +740,17 @@ public class RedisDataUtil {
 		}
 	}
 	
+	private static void checkClassFinder(Object data, ClassFinder classFinder) {
+		if(classFinder == null 
+				&& data != null
+				&& List.class.isAssignableFrom(data.getClass())
+				) {
+			List<?> list = (List<?>) data;
+			if(list.size() > 0) {
+				if(!BaseTypesMapping.IsSupportedBaseType(list.get(0).getClass())) {
+					throw new RuntimeException("ClassFinder must be assigned when element type of List is not primitive type. (Operation of finding properties through default ClassLoader is very slow when threads access simultaneously)");
+				}
+			}
+		}
+	}
 }
