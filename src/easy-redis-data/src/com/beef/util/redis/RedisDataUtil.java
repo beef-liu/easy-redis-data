@@ -228,6 +228,13 @@ public class RedisDataUtil {
 			) throws IOException, CompressException {
 		return jedis.set(key, encodeString(val, isUseCompress));
 	}
+	public static String setex(
+			JedisCommands jedis,
+			String key, int seconds, 
+			String val, boolean isUseCompress
+			) throws IOException, CompressException {
+		return jedis.setex(key, seconds, encodeString(val, isUseCompress));
+	}
 	
 	public static String get(
 			Jedis jedis,
@@ -253,6 +260,15 @@ public class RedisDataUtil {
 			String key, Object data, Class<?> dataClass, boolean isUseCompress 
 			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
 		return jedis.set(key, 
+				serializeDataToString(data, dataClass, isUseCompress));
+	}
+	
+	public static String setex(
+			JedisCommands jedis,
+			String key, int seconds, 
+			Object data, Class<?> dataClass, boolean isUseCompress 
+			) throws IntrospectionException, IllegalAccessException, InvocationTargetException, IOException, CompressException {
+		return jedis.setex(key, seconds, 
 				serializeDataToString(data, dataClass, isUseCompress));
 	}
 	
