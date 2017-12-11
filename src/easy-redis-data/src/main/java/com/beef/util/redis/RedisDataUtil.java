@@ -9,10 +9,9 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.w3c.tools.codec.Base64Decoder;
-import org.w3c.tools.codec.Base64Encoder;
-import org.w3c.tools.codec.Base64FormatException;
-
+import MetoXML.Util.Base64Decoder;
+import MetoXML.Util.Base64Encoder;
+import MetoXML.Util.Base64FormatException;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.Protocol;
