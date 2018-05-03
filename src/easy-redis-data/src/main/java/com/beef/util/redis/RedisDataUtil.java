@@ -59,10 +59,40 @@ public class RedisDataUtil {
 			//check signature of lzf
 			if(value.charAt(3) == 'A' || value.charAt(3) == 'B') {
 				//find out if multi chunk
+                /* bug #201805031508
 				int nextChunkIndex = value.indexOf("WlY", 4);
+				*/
+                int nextChunkIndex = -1;
+                {
+                    int start = 4;
+                    while(true) {
+                        final int index = value.indexOf("WlY", start);
+                        if(index < 0) {
+                            break;
+                        }
+
+                        final int nextChrIndex = index + "WlY".length();
+                        if(nextChrIndex >= value.length()) {
+                            break;
+                        }
+
+                        char nextChr = value.charAt(nextChrIndex);
+                        if(nextChr == 'A' || nextChr == 'B') {
+                            nextChunkIndex = index;
+                            break;
+                        }
+
+                        start = nextChrIndex;
+                    }
+                }
+
+				//search the next chunk
 				if(nextChunkIndex < 0) {
 					nextChunkIndex = value.length();
 				}
+
+
+
 				int countExcludeReturnLine = 0;
 				for(int i = 0; i < nextChunkIndex; i++) {
 					if(value.charAt(i) != '\r' && value.charAt(i) != '\n') {

@@ -182,8 +182,25 @@ public class RedisDataUtilTest {
 		
 		System.out.println("testDetectCompress1():" + alg);
 	}
-	
-//	@Test
+
+	@Test
+	public void testCompress1() {
+	    String s = "test1--------########";
+
+	    try {
+            String s2 = RedisDataUtil.encodeString(s, true);
+            System.out.println("encoded:" + s2);
+
+            String s3 = RedisDataUtil.decodeString(s2, true);
+            if(!s.equals(s3)) {
+                throw new RuntimeException("Failed to compress");
+            }
+        } catch (Throwable e) {
+	        e.printStackTrace();
+        }
+    }
+
+	@Test
 	public void testDetectCompress2() {
 		try {
 			//String s = "abcdafafjdaljflajflajfja;lfjafjlajflajfafhafhkafhahfkahfkhafk2317832131hrkh41h87tysfda8yfashfh123h4h12h432h41487y9fhdifh";
@@ -193,6 +210,7 @@ public class RedisDataUtilTest {
 			
 			for(int i = 0; i < s.length(); i++) {
 				encodedS = new String(RedisDataUtil.encodeStringBytes(s.substring(0, i + 1).getBytes("utf-8"), CompressAlgorithm.LZF), "utf-8");
+
 				//System.out.println("[" + i + "] expect LZF, detected:" + RedisDataUtil.detectValueCompressAlgorithm(encodedS));
 				if(RedisDataUtil.detectValueCompressAlgorithm(encodedS) != CompressAlgorithm.LZF) {
 					System.out.println("[" + i + "] expect LZF, but failed");
@@ -210,8 +228,32 @@ public class RedisDataUtilTest {
 			e.printStackTrace();
 		}
 	}
-	
-	public void testDecodeBase64ByHand() {
+
+	@Test
+	public void testDetectCompress3() {
+    	String s = "WlYBAXsCOxE8Q291cG9uSXRlbT4NCiAgPGNgDwRfaWQ+MGAACzIyNDAwNmRhOWQ8L+ABG4AqDXJlYXRlX3RpbWU+MTUyIAEGMzUzMzQzMyAp4AIaYCsHZXhwaXJlX2QgMAI+PC/gAw3gAx5gSgAw4AAfYA6gHwd0cmFfaW5mb2A94AAMYBwObGFzdF9udW1iZXI+MTwv4AMOYB8Nb3V0Ym91bmRfYmF0Y2jgANocMTYzMjAzMWMxOGYwMDU1ODUwMTgwMDRjOTVmPC/gCTNgSgJwd2QggEAFYA4fcXJfY29kZV91cmw+aHR0cDovL2QuZWJ1eS5pby9odXQOP0FpcHNQWm5hWWlYeTwv4AMuYD8CcmVmYEAOPjE3NjUzOTk2MzM3NDwv4AAWYCQBc2UgumEKIRngAQyAGwFuX0CACz4xMDA3NDI5MTAzOSEBwBWAIgZ0YXR1cz44QBeACmAWAXVzoV8gVOAAC2AZAnZvaeABb+ABDAQNCjwvQ2IcYiwBDQo="
+				;
+		CompressAlgorithm alg = RedisDataUtil.detectValueCompressAlgorithm(s);
+
+		System.out.println("testDetectCompress1():" + alg);
+        if(alg != CompressAlgorithm.LZF) {
+            throw new RuntimeException("Failed to detect compress algorithm");
+        }
+	}
+
+    @Test
+    public void testDetectCompress4() {
+        String s = "WlYBABAAFQV0ZXN0MS2gAAAjYAABIyM="
+                ;
+        CompressAlgorithm alg = RedisDataUtil.detectValueCompressAlgorithm(s);
+
+        System.out.println("testDetectCompress1():" + alg);
+        if(alg != CompressAlgorithm.LZF) {
+            throw new RuntimeException("Failed to detect compress algorithm");
+        }
+    }
+
+    public void testDecodeBase64ByHand() {
 		String s = "AC0A";
 		
 		byte[] bytes = RedisDataUtil.decode3ByteBase64(

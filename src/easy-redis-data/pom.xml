@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.beef</groupId>
     <artifactId>easy-redis-data</artifactId>
-    <version>1.2.0</version>
+    <version>1.2.1</version>
     <name>easy-redis-data</name>
     <url>http://maven.apache.org</url>
 
